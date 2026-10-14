@@ -1,7 +1,8 @@
-import asyncio
 import logging
 import os
-from aiohttp import web
+import threading
+from flask import Flask
+import asyncio
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import ErrorEvent
@@ -11,13 +12,16 @@ from database import Database
 from database.storage import SQLiteStorage
 from handlers import admin_router, common_router, operators_router, orders_router
 
+# Render talabini bajarish uchun oddiy Flask web-server
+app = Flask(__name__)
 
-# Render kabi serverlar uchun oddiy web-server (portni band qilib turish uchun)
-async def handle_ping(request):
-    return web.Response(text="Bot is running!")
+@app.route("/")
+def index():
+    return "Bot is running!"
 
-async b_app = web.Application()
-b_app.router.add_get("/", handle_ping)
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
 
 async def main() -> None:
@@ -43,21 +47,16 @@ async def main() -> None:
         )
         return True
 
-    # Render avtomatik beradigan PORT ni aniqlaymiz (agar bo'lmasa 8080)
-    port = int(os.environ.get("PORT", 8080))
-    runner = web.AppRunner(b_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logging.info(f"Web server {port}-portda ishga tushdi.")
-
     # Botni ishga tushirish
     async with Bot(settings.bot_token) as bot:
         await dispatcher.start_polling(bot, db=db, settings=settings)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Web serverni alohida oqimda (thread) ishga tushiramiz
+    web_thread = threading.Thread(target=run_web)
+    web_thread.daemon = True
+    web_thread.start()
 
-if __name__ == "__main__":
+    # Asosiy oqimda Telegram botni ishga tushiramiz
     asyncio.run(main())
